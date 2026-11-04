@@ -1,175 +1,316 @@
 
 import { useEffect, useState } from "react";
+import {
+  uploadDocument,
+  getDocuments,
+  getExtractedText
+} from "./services/api";
 import "./App.css";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("Checking...");
-  const [currentPage, setCurrentPage] = useState("Overview");
+  const [activePage, setActivePage] = useState("Overview");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [documents, setDocuments] = useState([]);
 
+  // Extraction viewer states
+  const [extractedText, setExtractedText] = useState(null);
+  const [extractingId, setExtractingId] = useState(null);
+  const [extractionError, setExtractionError] = useState("");
+
+  // Check backend connection and retrieve saved documents
   useEffect(() => {
     fetch("http://127.0.0.1:8000/health")
       .then((response) => {
         if (!response.ok) {
-          throw new Error("Backend request failed");
+          throw new Error("Backend unavailable");
         }
         return response.json();
       })
-      .then((data) => {
-        setBackendStatus(data.status === "healthy" ? "Connected" : "Unavailable");
+      .then(() => setBackendStatus("Connected"))
+      .catch(() => setBackendStatus("Disconnected"));
+
+    getDocuments()
+      .then((result) => {
+        setDocuments(result.documents);
       })
-      .catch(() => {
-        setBackendStatus("Disconnected");
+      .catch((error) => {
+        console.error("Document loading error:", error);
       });
   }, []);
 
-  const menuItems = [
-    { name: "Overview", icon: "▦" },
-    { name: "Documents", icon: "▤" },
-    { name: "Findings", icon: "⚑" },
-    { name: "Evidence Graph", icon: "◇" },
-    { name: "Reports", icon: "▧" },
+  // Upload selected document
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setUploadMessage("Please select a document first.");
+      return;
+    }
+
+    setUploading(true);
+    setUploadMessage("");
+
+    try {
+      const result = await uploadDocument(selectedFile);
+
+      setDocuments((previous) => [
+        ...previous,
+        {
+          ...result,
+          document_id: result.document_id,
+          original_filename: result.original_filename,
+        },
+      ]);
+
+      setUploadMessage("Document uploaded successfully!");
+      setSelectedFile(null);
+
+      const fileInput = document.getElementById("document-input");
+
+      if (fileInput) {
+        fileInput.value = "";
+      }
+    } catch (error) {
+      setUploadMessage(error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Retrieve extracted text for a document
+  const handleViewExtractedText = async (documentId) => {
+    setExtractingId(documentId);
+    setExtractedText(null);
+    setExtractionError("");
+
+    try {
+      const result = await getExtractedText(documentId);
+      setExtractedText(result);
+    } catch (error) {
+      setExtractionError(error.message);
+    } finally {
+      setExtractingId(null);
+    }
+  };
+
+  const navigationItems = [
+    "Overview",
+    "Documents",
+    "Findings",
+    "Evidence Graph",
+    "Reports",
   ];
 
   return (
-    <div className="app-layout">
+    <div className="dashboard">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-icon">D</div>
-          <div>
-            <h2>DocuTrace AI</h2>
-            <span>Document Intelligence</span>
-          </div>
+          <h2>DocuTrace AI</h2>
+          <p>Document Intelligence</p>
         </div>
 
-        <p className="nav-heading">WORKSPACE</p>
-
         <nav>
-          {menuItems.map((item) => (
+          {navigationItems.map((item) => (
             <button
-              key={item.name}
-              className={`nav-item ${
-                currentPage === item.name ? "active" : ""
-              }`}
-              onClick={() => setCurrentPage(item.name)}
+              key={item}
+              className={
+                activePage === item ? "nav-item active" : "nav-item"
+              }
+              onClick={() => setActivePage(item)}
             >
-              <span>{item.icon}</span>
-              {item.name}
+              {item}
             </button>
           ))}
         </nav>
 
-        <div className="sidebar-bottom">
-          <div className="backend-indicator">
-            <span
-              className={
-                backendStatus === "Connected"
-                  ? "status-dot online"
-                  : "status-dot offline"
-              }
-            ></span>
-            <div>
-              <strong>Backend status</strong>
-              <small>{backendStatus}</small>
-            </div>
-          </div>
-          <p>DocuTrace AI v1.0.0</p>
+        <div className="sidebar-footer">
+          AI-Powered Document Forensics
         </div>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
           <div>
-            <span className="breadcrumb">Workspace /</span>
-            <strong>{currentPage}</strong>
+            <h1>{activePage}</h1>
+            <p>Document Forensics & Contextual Intelligence</p>
           </div>
-          <div className="user-profile">
-            <div className="avatar">DT</div>
-            <span>Investigator</span>
+
+          <div className="backend-status">
+            <span
+              className={
+                backendStatus === "Connected"
+                  ? "status-dot"
+                  : "status-dot disconnected"
+              }
+            ></span>
+            Backend: {backendStatus}
           </div>
         </header>
 
-        <section className="page-content">
-          <div className="welcome-section">
-            <div>
-              <p className="eyebrow">DOCUMENT FORENSICS PLATFORM</p>
-              <h1>{currentPage}</h1>
-              <p className="subtitle">
-                Analyze documents, identify inconsistencies and trace
-                evidence with explainable intelligence.
+        <section className="stats-grid">
+          <div className="stat-card">
+            <p>Total Cases</p>
+            <h2>0</h2>
+          </div>
+
+          <div className="stat-card">
+            <p>Documents Uploaded</p>
+            <h2>{documents.length}</h2>
+          </div>
+
+          <div className="stat-card">
+            <p>Findings Detected</p>
+            <h2>0</h2>
+          </div>
+
+          <div className="stat-card">
+            <p>Backend Status</p>
+            <h2 className="status-text">{backendStatus}</h2>
+          </div>
+        </section>
+
+        <section className="upload-section">
+          <div className="section-heading">
+            <h2>Document Upload</h2>
+            <p>Upload documents for forensic analysis</p>
+          </div>
+
+          <div className="upload-box">
+            <div className="upload-icon">↑</div>
+
+            <h3>Select a document</h3>
+            <p>Supported formats: PDF, DOCX, PNG, JPG</p>
+
+            <input
+              id="document-input"
+              type="file"
+              accept=".pdf,.docx,.png,.jpg,.jpeg"
+              onChange={(event) => {
+                setSelectedFile(event.target.files[0] || null);
+                setUploadMessage("");
+              }}
+            />
+
+            {selectedFile && (
+              <p className="selected-file">
+                Selected: {selectedFile.name}
               </p>
-            </div>
-            <div className="case-button">
-              <span>✦</span> Investigation Workspace
-            </div>
+            )}
+
+            <button
+              className="upload-button"
+              onClick={handleUpload}
+              disabled={uploading}
+            >
+              {uploading ? "Uploading..." : "Upload Document"}
+            </button>
+
+            {uploadMessage && (
+              <p className="upload-message">{uploadMessage}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="documents-section">
+          <div className="section-heading">
+            <h2>Uploaded Documents</h2>
+            <p>Documents stored in the backend</p>
           </div>
 
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-label">Total Cases</span>
-              <h2>0</h2>
-              <p>No cases created yet</p>
+          {documents.length === 0 ? (
+            <div className="empty-state">
+              No documents uploaded yet.
             </div>
-            <div className="stat-card">
-              <span className="stat-label">Documents Analyzed</span>
-              <h2>0</h2>
-              <p>Awaiting document uploads</p>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Findings Detected</span>
-              <h2>0</h2>
-              <p>No findings available</p>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Backend Connection</span>
-              <h2 className="connection-value">{backendStatus}</h2>
-              <p>FastAPI service status</p>
-            </div>
-          </div>
+          ) : (
+            <div className="document-list">
+              {documents.map((document) => (
+                <div
+                  className="document-item"
+                  key={document.document_id}
+                >
+                  <div>
+                    <strong>{document.original_filename}</strong>
+                    <p>ID: {document.document_id}</p>
+                  </div>
 
-          <div className="workspace-grid">
-            <section className="panel upload-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Start an investigation</h3>
-                  <p>Upload documents to begin forensic analysis.</p>
+                  <div>
+                    <span className="document-status">
+                      Uploaded
+                    </span>
+
+                    {document.file_extension === ".pdf" && (
+                      <button
+                        className="upload-button"
+                        onClick={() =>
+                          handleViewExtractedText(document.document_id)
+                        }
+                        disabled={extractingId === document.document_id}
+                      >
+                        {extractingId === document.document_id
+                          ? "Loading..."
+                          : "View Extracted Text"}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <span className="panel-icon">↥</span>
-              </div>
+              ))}
+            </div>
+          )}
+        </section>
 
-              <div className="upload-placeholder">
-                <div className="upload-icon">↑</div>
-                <h3>Document upload coming next</h3>
-                <p>
-                  PDF, JPG, PNG and other supported formats will
-                  be available in the next development milestone.
-                </p>
-              </div>
-            </section>
+        {extractionError && (
+          <section className="notice-section">
+            <strong>Extraction Error</strong>
+            <p>{extractionError}</p>
+          </section>
+        )}
 
-            <section className="panel activity-panel">
-              <h3>Investigation activity</h3>
-              <p className="panel-description">
-                Your recent investigation activity will appear here.
+        {extractedText && (
+          <section className="documents-section">
+            <div className="section-heading">
+              <h2>Extracted Document Text</h2>
+              <p>
+                {extractedText.total_pages} pages extracted
               </p>
-              <div className="empty-activity">
-                <span>◷</span>
-                <p>No activity yet</p>
+            </div>
+
+            <button
+              className="upload-button"
+              onClick={() => setExtractedText(null)}
+            >
+              Close Text Viewer
+            </button>
+
+            {extractedText.pages.map((page) => (
+              <div
+                className="document-item"
+                key={page.page_number}
+                style={{ marginTop: "15px", display: "block" }}
+              >
+                <strong>Page {page.page_number}</strong>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    marginTop: "12px",
+                    fontFamily: "inherit",
+                    lineHeight: "1.6",
+                  }}
+                >
+                  {page.text || "No text found on this page."}
+                </pre>
               </div>
-            </section>
-          </div>
+            ))}
+          </section>
+        )}
 
-          <div className="notice">
-            <strong>Evidence-first analysis</strong>
-            <p>
-              DocuTrace AI identifies potential anomalies and
-              contextual inconsistencies. Findings require human
-              verification and are not proof of fraud.
-            </p>
-          </div>
-
-          <footer>
-            DocuTrace AI · AI-Powered Document Forensics
-          </footer>
+        <section className="notice-section">
+          <strong>Evidence-first analysis</strong>
+          <p>
+            Every finding will be supported by traceable document evidence.
+            Automated observations will require human review.
+          </p>
         </section>
       </main>
     </div>

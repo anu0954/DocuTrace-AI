@@ -1,14 +1,28 @@
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.routes.documents import router as documents_router
+from app.database.db import init_db
+from app.routes.extraction import router as extraction_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
 
 app = FastAPI(
     title="DocuTrace AI",
     description="AI-Powered Document Forensics and Contextual Intelligence System",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# Allow our React frontend to communicate with the backend
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -16,6 +30,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(documents_router)
+app.include_router(extraction_router)   
 
 
 @app.get("/")
